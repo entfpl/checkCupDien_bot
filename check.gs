@@ -1,6 +1,11 @@
 // ======= CẤU HÌNH =======
 const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/xxx'; //THAY BẰNG WEBHOOK CỦA BẠN
 
+// ======= Decode HTML ======
+function htmlDecode(input) {
+  return XmlService.parse('<r>' + input + '</r>').getRootElement().getText();
+}
+
 // ======= GỬI TIN NHẮN LÊN DISCORD =======
 function sendDiscordMessage(content) {
   if (content.length > 1900) content = content.substring(0, 1900) + '\n... (tin nhắn quá dài, đã cắt bớt)';
@@ -40,20 +45,42 @@ function getLichCupDien(maKhachHang) {
       return `✅ Mã KH ${maKhachHang} - Không có lịch cúp điện từ ${tuNgay} đến ${denNgay}.`;
     }
 
-    const lichMatches = [...html.matchAll(/<div class="item">([\s\S]*?)<\/div>/g)];
-    if (lichMatches.length === 0) return `⚠️ Mã KH ${maKhachHang} - Không đọc được lịch cúp.`;
+    const divItemMatches = [...html.matchAll(/<div class="item">([\s\S]*?)<\/div>/g)];
+    const notificationMatch = html.match(/<div class="notification">([\s\S]*?)<\/div>/);
 
-    let msg = `🔌 Mã KH ${maKhachHang} - Có ${lichMatches.length} đợt cúp điện:\n\n`;
-    lichMatches.forEach((m, i) => {
-      const b = m[1];
-      const khuVuc = (b.match(/<strong>Khu vực: <\/strong>(.*?)<\/p>/) || [])[1]?.trim() || 'Không rõ';
-      const tu = (b.match(/<strong>Từ: <\/strong>(.*?)<br>/) || [])[1]?.trim() || 'Không rõ';
-      const den = (b.match(/<strong>Đến: <\/strong>(.*?)<\/p>/) || [])[1]?.trim() || 'Không rõ';
-      const lyDo = (b.match(/<strong>Lý do: <\/strong>(.*?)<\/p>/) || [])[1]?.trim() || 'Không rõ';
-      msg += `📍 Khu vực: ${khuVuc}\n⏰ ${tu} → ${den}\n🔧 Lý do: ${lyDo}\n---\n`;
-    });
+    if (divItemMatches.length > 0) {
+      let msg = `🔌 Mã KH ${maKhachHang} - Có ${divItemMatches.length} đợt cúp điện:\n\n`;
+      divItemMatches.forEach((m) => {
+        const b = m[1];
+        const khuVuc = (b.match(/<strong>Khu vực: <\/strong>(.*?)<\/p>/) || [])[1]?.trim() || 'Không rõ';
+        const tu = (b.match(/<strong>Từ: <\/strong>(.*?)<br>/) || [])[1]?.trim() || 'Không rõ';
+        const den = (b.match(/<strong>Đến: <\/strong>(.*?)<\/p>/) || [])[1]?.trim() || 'Không rõ';
+        const lyDo = (b.match(/<strong>Lý do: <\/strong>(.*?)<\/p>/) || [])[1]?.trim() || 'Không rõ';
+        msg += `📍 Khu vực: ${khuVuc}\n⏰ ${tu} → ${den}\n🔧 Lý do: ${lyDo}\n---\n`;
+      });
+      return msg.trim();
+    }
 
-    return msg.trim();
+    if (notificationMatch) {
+      const block = notificationMatch[1];
+
+      const diaDiemRaw = (block.match(/<b>Địa điểm ngừng cung cấp điện:<\/b>(.*?)<\/span>/) || [])[1]?.trim() || 'Không rõ';
+      const diaDiem = htmlDecode(diaDiemRaw);
+
+      const thoiGian = (block.match(/<b>Thời gian bắt đầu ngừng cung cấp điện:<\/b>(.*?)<b>Thời gian dự kiến đóng điện trở lại:<\/b>(.*?)<\/span>/) || []);
+
+      const tuRaw = thoiGian[1]?.trim() || 'Không rõ';
+      const denRaw = thoiGian[2]?.trim() || 'Không rõ';
+      const tu = htmlDecode(tuRaw);
+      const den = htmlDecode(denRaw);
+
+      const lyDoRaw = (block.match(/<b>Lý do ngừng cung cấp điện:<\/b>(.*?)<\/span>/) || [])[1]?.trim() || 'Không rõ';
+      const lyDo = htmlDecode(lyDoRaw);
+
+      return `🔌 Mã KH ${maKhachHang} - Có 1 đợt cúp điện:\n\n📍 Khu vực: ${diaDiem}\n⏰ Thời gian: ${tu} → ${den}\n Lý do: ${lyDo}`;
+    }
+
+    return `⚠️ Mã KH ${maKhachHang} - Không đọc được lịch cúp điện.`;
 
   } catch (e) {
     return `❌ Mã KH ${maKhachHang} - Lỗi khi gọi API: ${e.toString()}`;
